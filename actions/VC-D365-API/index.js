@@ -1,6 +1,5 @@
 const axios = require('axios');
 const FormData = require('form-data');
-const { stringParameters } = require('../utils');
 
 async function main(params) {
 
@@ -16,8 +15,6 @@ async function main(params) {
       body: JSON.stringify({ error: 'Missing D365 configuration' }),
     };
   }
-
-  console.log(stringParameters(params))
 
   let formData = new FormData();
   formData.append('client_Id', D365_CLIENT_ID);
