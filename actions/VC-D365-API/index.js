@@ -1,94 +1,72 @@
-const fetch = require('node-fetch');
-const { Core } = require('@adobe/aio-sdk');
-const { errorResponse, stringParameters } = require('../utils');
-
-
-function parseQuery(queryString = '') {
-  return Object.fromEntries(new URLSearchParams(queryString));
-}
+const axios = require('axios');
+const FormData = require('form-data');
+const { stringParameters } = require('../utils');
 
 async function main(params) {
-  const logger = Core.Logger('main', { level: params.LOG_LEVEL || 'info' });
 
+  const D365_APP_ID = params.D365_APP_ID;
   const D365_API_URL = params.D365_API_URL;
-  const D365_API_KEY = params.D365_API_KEY;
+  const D365_CLIENT_ID = params.D365_CLIENT_ID;
+  const D365_GRANT_TYPE = params.D365_GRANT_TYPE;
+  const D365_CLIENT_SECRET = params.D365_CLIENT_SECRET;
 
-  if (!D365_API_URL || !D365_API_KEY) {
+  if (!D365_APP_ID || !D365_API_URL || !D365_CLIENT_ID || !D365_GRANT_TYPE || !D365_CLIENT_SECRET) {
     return {
       statusCode: 500,
       body: JSON.stringify({ error: 'Missing D365 configuration' }),
     };
   }
 
-  const queryParams = parseQuery(params.__ow_query);
+  console.log(stringParameters(params))
 
-  const {
-    customerId,
-    action,
-    recordId,
-    page,
-    pageSize,
-    searchTerm,
-  } = queryParams;
+  let formData = new FormData();
+  formData.append('client_Id', D365_CLIENT_ID);
+  formData.append('grant_type', D365_GRANT_TYPE);
+  formData.append('resource', D365_API_URL);
+  formData.append('client_secret', D365_CLIENT_SECRET);
 
+  const authOptions = {
+    method: 'POST',
+    maxBodyLength: Infinity,
+    url: `https://login.microsoftonline.com/${D365_APP_ID}/oauth2/token`,
+    headers: {
+      ...formData.getHeaders(),
+    },
+    data: formData
+  };
 
-  if (!action) {
-    return errorResponse(400, 'Missing required param: action', logger);
+  const authResponse = await axios.request(authOptions);
+
+  if (authResponse.statusText !== 'OK') {
+    throw new Error(`Request failed with status ${authResponse.status}`);
   }
 
-  // Build endpoint dynamically
-  let endpoint = '';
-  switch (action) {
-    case 'ordersHistory':
-      endpoint = `${D365_API_URL}/customers/${customerId}/orders`;
-      break;
-    case 'orderDetails':
-      endpoint = `${D365_API_URL}/orders/${recordId}`;
-      break;
-    case 'invoiceHistory':
-      endpoint = `${D365_API_URL}/customers/invoices?accounts=${customerId}`;
-      break;
-    case 'invoiceDetails':
-      endpoint = `${D365_API_URL}/customers/invoices/${recordId}`;
-      break;
-    case 'invoiceSearch':
-      endpoint = `${D365_API_URL}/customers/invoices/search?account=${customerId}&searchTerm=${searchTerm}&page=${page || 1}&pageSize=${pageSize || 20}&sortBy=amount_desc`;
-      break;
-    case 'creditMemoHistory':
-      endpoint = `${D365_API_URL}/customers/credits?accounts=${customerId}`;
-      break;
-    case 'creditMemoDetails':
-      endpoint = `${D365_API_URL}/customers/credits/${recordId}`;
-      break;
-    case 'creditMemoSearch':
-      endpoint = `${D365_API_URL}/customers/credits/search?account=${customerId}&searchTerm=${searchTerm}&page=${page || 1}&pageSize=${pageSize || 20}&sortBy=CreditMemoDate_desc`;
-      break;
-    default:
-      return errorResponse(400, 'Invalid action param', logger);
+  const requestOptions = {
+    method: params.method,
+    url: `${D365_API_URL}${params.path}`,
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `${authResponse.data.token_type} ${authResponse.data.access_token}`,
+    }
+  }
+  if (params.method === 'POST') {
+    requestOptions.data = JSON.stringify(params.data);
   }
 
   try {
-    const res = await fetch(endpoint, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': D365_API_KEY,
-      },
-    });
-
-    if (!res.ok) {
-      throw new Error(`Request failed with status ${res.status}`);
-    }
-
-    const content = await res.json();
+    const response =  await axios.request(requestOptions);
     return {
-      statusCode: 200,
-      body: content,
+      statusCode: response.status,
+      body: response.data
     };
   } catch (error) {
-    logger.error(error);
-    return errorResponse(500, 'Server error', logger);
+    return {
+      statusCode: error.response.status,
+      body: error.response.data
+    };
   }
+
+
 }
 
 exports.main = main;
