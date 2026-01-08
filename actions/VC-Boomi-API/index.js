@@ -1,39 +1,94 @@
 const axios = require('axios');
 const { Core } = require('@adobe/aio-sdk');
+const crypto = require('crypto');
+
+const SECRET = process.env.SESSION_SECRET || 'replace-this-secret';
+
+function validateSessionToken(params) {
+  const raw = params.__ow_headers?.['x-session-token'];
+  console.log('Headers received:', params.__ow_headers);
+  if (!raw) return false;
+
+  try {
+    const decoded = JSON.parse(
+      Buffer.from(raw, 'base64').toString('utf-8')
+    );
+
+    const { exp, sig, ...payload } = decoded;
+
+    const expectedSig = crypto
+      .createHmac('sha256', SECRET)
+      .update(JSON.stringify({ exp, ...payload }))
+      .digest('hex');
+
+    return sig === expectedSig && Date.now() <= exp;
+  } catch {
+    return false;
+  }
+}
 
 async function main(params) {
-  const logger = Core.Logger('main', { level: 'info' });
-
-  logger.info('Incoming params:', JSON.stringify(params, null, 2));
-
-  const { path, method = 'GET', data } = params;
-
-  if (!path) {
+  if (params.__ow_method === 'options') {
     return {
-      statusCode: 400,
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ error: 'Missing required param: path' })
+      statusCode: 204,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
+        'Access-Control-Allow-Headers': '*'
+      }
     };
   }
 
-  const BOOMI_API_URL = params.BOOMI_API_URL;
-  const BOOMI_API_KEY = params.BOOMI_API_KEY;
+  console.log('Received params:', params);
 
-  if (!BOOMI_API_URL || !BOOMI_API_KEY) {
+  if (!validateSessionToken(params)) {
     return {
-      statusCode: 500,
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ error: 'Missing Boomi config' })
+      statusCode: 401,
+      headers: { 'Access-Control-Allow-Origin': '*' },
+      body: JSON.stringify({ error: 'Unauthorized access' })
     };
+  }
+
+  let body = {};
+
+  if (
+    typeof params.__ow_body === 'string' &&
+    params.__ow_body.trim().length > 0
+  ) {
+    try {
+      const decodedBody = Buffer
+        .from(params.__ow_body, 'base64')
+        .toString('utf-8');
+
+      body = JSON.parse(decodedBody);
+    } catch (e) {
+      return {
+        statusCode: 400,
+        body: {
+          error: 'Invalid JSON body',
+          raw: params.__ow_body
+        }
+      };
+    }
+  }
+
+  const { path, method = 'GET', data } = body;
+
+  if (!path) {
+    return { statusCode: 400, body: { error: 'Missing path' } };
+  }
+
+  if (!params.BOOMI_API_URL || !params.BOOMI_API_KEY) {
+    return { statusCode: 500, body: { error: 'Missing Boomi config' } };
   }
 
   try {
     const response = await axios({
-      method: method.toUpperCase(),
-      url: `${BOOMI_API_URL}${path}`,
+      method,
+      url: `${params.BOOMI_API_URL}${path}`,
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': BOOMI_API_KEY
+        'x-api-key': params.BOOMI_API_KEY
       },
       data: method !== 'GET' ? data : undefined,
       timeout: 30000
@@ -41,16 +96,12 @@ async function main(params) {
 
     return {
       statusCode: response.status,
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(response.data)
+      body: response.data
     };
   } catch (error) {
     return {
       statusCode: error.response?.status || 500,
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(
-        error.response?.data || { error: 'Boomi request failed' }
-      )
+      body: error.response?.data || { error: 'Boomi request failed' }
     };
   }
 }
