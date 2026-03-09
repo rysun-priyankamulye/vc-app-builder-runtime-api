@@ -4,6 +4,19 @@ const crypto = require('crypto');
 
 const SECRET = process.env.SESSION_SECRET || 'replace-this-secret';
 
+function resolveBoomiApiKey(path, params) {
+  if (typeof path === 'string') {
+    if (path.startsWith('/v1/')) {
+      return params.V1_BOOMI_API_KEY;
+    }
+    if (path.startsWith('/v2/')) {
+      return params.V2_BOOMI_API_KEY;
+    }
+  }
+
+  return params.BOOMI_API_KEY;
+}
+
 function validateSessionToken(params) {
   const raw = params.__ow_headers?.['x-session-token'];
   console.log('Headers received:', params.__ow_headers);
@@ -78,8 +91,13 @@ async function main(params) {
     return { statusCode: 400, body: { error: 'Missing path' } };
   }
 
-  if (!params.BOOMI_API_URL || !params.BOOMI_API_KEY) {
-    return { statusCode: 500, body: { error: 'Missing Boomi config' } };
+  const boomiApiKey = resolveBoomiApiKey(path, params);
+
+  if (!params.BOOMI_API_URL || !boomiApiKey) {
+    return {
+      statusCode: 500,
+      body: { error: 'Missing Boomi config for the requested API version' }
+    };
   }
 
   try {
@@ -88,7 +106,7 @@ async function main(params) {
       url: `${params.BOOMI_API_URL}${path}`,
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': params.BOOMI_API_KEY
+        'x-api-key': boomiApiKey
       },
       data: method !== 'GET' ? data : undefined,
       timeout: 30000
