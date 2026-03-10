@@ -1,42 +1,38 @@
 const axios = require('axios');
-const { Core } = require('@adobe/aio-sdk');
 const crypto = require('crypto');
 
 const SECRET = process.env.SESSION_SECRET || 'replace-this-secret';
 
-function resolveBoomiConfig(path, params) {
-  if (typeof path === 'string') {
-    if (path.startsWith('/v1/track-notify')) {
-      return {
-        apiUrl: params.BOOMI_API_URL_DEV,
-        apiKey: params.BOOMI_API_KEY_DEV
-      };
-    }
-
-    if (path.startsWith('/v1/')) {
-      return {
-        apiUrl: params.BOOMI_API_URL,
-        apiKey: params.V1_BOOMI_API_KEY
-      };
-    }
-
-    if (path.startsWith('/v2/')) {
-      return {
-        apiUrl: params.BOOMI_API_URL,
-        apiKey: params.V2_BOOMI_API_KEY
-      };
-    }
+function resolveApiConfig(path, params) {
+  if (typeof path === 'string' && path.startsWith('/api/getaccount')) {
+    return {
+      apiUrl: params.WSP_GETACCOUNT_API_URL,
+      apiKey: params.WSP_GETACCOUNT_API_KEY,
+      error: 'Missing WSP getaccount config'
+    };
   }
 
   return {
-    apiUrl: params.BOOMI_API_URL,
-    apiKey: params.BOOMI_API_KEY
+    apiUrl: params.PARTNER_INSIGHT_API_URL,
+    apiKey: params.PARTNER_INSIGHT_API_KEY,
+    error: 'Missing Partner Insight config'
   };
+}
+
+function buildRequestUrl(apiUrl, path) {
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+
+  if (typeof apiUrl === 'string' && apiUrl.endsWith(path)) {
+    return apiUrl;
+  }
+
+  return `${apiUrl}${path}`;
 }
 
 function validateSessionToken(params) {
   const raw = params.__ow_headers?.['x-session-token'];
-  console.log('Headers received:', params.__ow_headers);
   if (!raw) return false;
 
   try {
@@ -69,8 +65,6 @@ async function main(params) {
     };
   }
 
-  console.log('Received params:', params);
-
   if (!validateSessionToken(params)) {
     return {
       statusCode: 401,
@@ -91,13 +85,10 @@ async function main(params) {
         .toString('utf-8');
 
       body = JSON.parse(decodedBody);
-    } catch (e) {
+    } catch {
       return {
         statusCode: 400,
-        body: {
-          error: 'Invalid JSON body',
-          raw: params.__ow_body
-        }
+        body: { error: 'Invalid JSON body' }
       };
     }
   }
@@ -108,20 +99,20 @@ async function main(params) {
     return { statusCode: 400, body: { error: 'Missing path' } };
   }
 
-  const boomiConfig = resolveBoomiConfig(path, params);
-  const { apiUrl, apiKey } = boomiConfig;
+  const apiConfig = resolveApiConfig(path, params);
+  const { apiUrl, apiKey, error: configError } = apiConfig;
 
   if (!apiUrl || !apiKey) {
     return {
       statusCode: 500,
-      body: { error: 'Missing Boomi config for the requested API version' }
+      body: { error: configError }
     };
   }
 
   try {
     const response = await axios({
       method,
-      url: `${apiUrl}${path}`,
+      url: buildRequestUrl(apiUrl, path),
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': apiKey
@@ -137,7 +128,7 @@ async function main(params) {
   } catch (error) {
     return {
       statusCode: error.response?.status || 500,
-      body: error.response?.data || { error: 'Boomi request failed' }
+      body: error.response?.data || { error: 'Partner Insight request failed' }
     };
   }
 }

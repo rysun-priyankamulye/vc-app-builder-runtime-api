@@ -29,13 +29,33 @@ application:
             inputs:
               LOG_LEVEL: debug
               BOOMI_API_URL: $BOOMI_API_URL
+              BOOMI_API_URL_DEV: $BOOMI_API_URL_DEV
+              V1_BOOMI_API_KEY: $V1_BOOMI_API_KEY
+              V2_BOOMI_API_KEY: $V2_BOOMI_API_KEY
               BOOMI_API_KEY: $BOOMI_API_KEY
+              BOOMI_API_KEY_DEV: $BOOMI_API_KEY_DEV
               SESSION_SECRET: $SESSION_SECRET
             annotations:
               web-export: true
               raw-http: true
               require-adobe-auth: false
               final: true    
+          VC-PartnerInsight-API:
+            function: actions/VC-PartnerInsight-API/index.js
+            web: secure
+            runtime: nodejs:22
+            inputs:
+              LOG_LEVEL: debug
+              PARTNER_INSIGHT_API_URL: $PARTNER_INSIGHT_API_URL
+              PARTNER_INSIGHT_API_KEY: $PARTNER_INSIGHT_API_KEY
+              WSP_GETACCOUNT_API_URL: $WSP_GETACCOUNT_API_URL
+              WSP_GETACCOUNT_API_KEY: $WSP_GETACCOUNT_API_KEY
+              SESSION_SECRET: $SESSION_SECRET
+            annotations:
+              web-export: true
+              raw-http: true
+              require-adobe-auth: false
+              final: true
           Get-Session-Token:
             function: actions/Get-Session-Token/index.js
             web: secure
