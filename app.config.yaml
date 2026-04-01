@@ -17,6 +17,9 @@ application:
               D365_CLIENT_ID: $D365_CLIENT_ID
               D365_GRANT_TYPE: $D365_GRANT_TYPE
               D365_CLIENT_SECRET: $D365_CLIENT_SECRET
+              SESSION_SECRET: $SESSION_SECRET
+              AVALARA_API_URL: $AVALARA_API_URL
+              AVALARA_TOKEN: $AVALARA_TOKEN
             annotations:
               web-export: true
               raw-http: true
@@ -50,6 +53,52 @@ application:
               PARTNER_INSIGHT_API_KEY: $PARTNER_INSIGHT_API_KEY
               WSP_GETACCOUNT_API_URL: $WSP_GETACCOUNT_API_URL
               WSP_GETACCOUNT_API_KEY: $WSP_GETACCOUNT_API_KEY
+              SESSION_SECRET: $SESSION_SECRET
+            annotations:
+              web-export: true
+              raw-http: true
+              require-adobe-auth: false
+              final: true
+          VC-Avalara-API:
+            function: actions/VC-Avalara-API/index.js
+            web: secure
+            runtime: nodejs:22
+            inputs:
+              LOG_LEVEL: debug
+              AVALARA_CLIENT_ID: $AVALARA_CLIENT_ID
+              AVALARA_CLIENT_SECRET: $AVALARA_CLIENT_SECRET
+              AVALARA_GRANT_TYPE: $AVALARA_GRANT_TYPE
+              AVALARA_SCOPE: $AVALARA_SCOPE
+              AVALARA_TOKEN_URL: $AVALARA_TOKEN_URL
+              AVALARA_RESOLVE_URL: $AVALARA_RESOLVE_URL
+              SESSION_SECRET: $SESSION_SECRET
+            annotations:
+              web-export: true
+              raw-http: true
+              require-adobe-auth: false
+              final: true
+          VC-Payment-Methods-API:
+            function: actions/VC-Payment-Methods-API/index.js
+            web: secure
+            runtime: nodejs:22
+            inputs:
+              LOG_LEVEL: debug
+              FISERV_USB_API_URL: $FISERV_USB_API_URL
+              FISERV_USB_API_KEY: $FISERV_USB_API_KEY
+              FISERV_USB_X_APPLICATION_NAME: $FISERV_USB_X_APPLICATION_NAME
+              FISERV_USB_X_APPLICATION_NAME_WHOLESALE: $FISERV_USB_X_APPLICATION_NAME_WHOLESALE
+              FISERV_USB_X_APPLICATION_NAME_RETAIL: $FISERV_USB_X_APPLICATION_NAME_RETAIL
+              FISERV_USB_LIST_PATH: $FISERV_USB_LIST_PATH
+              FISERV_USB_DELETE_PATH: $FISERV_USB_DELETE_PATH
+              CYBERSOURCE_API_BASE_URL: $CYBERSOURCE_API_BASE_URL
+              CYBERSOURCE_USE_TEST_MODE: $CYBERSOURCE_USE_TEST_MODE
+              CYBERSOURCE_MERCHANT_ID: $CYBERSOURCE_MERCHANT_ID
+              CYBERSOURCE_REST_KEY_ID: $CYBERSOURCE_REST_KEY_ID
+              CYBERSOURCE_REST_KEY_VALUE: $CYBERSOURCE_REST_KEY_VALUE
+              CYBERSOURCE_TMS_CUSTOMER_PATH_PREFIX: $CYBERSOURCE_TMS_CUSTOMER_PATH_PREFIX
+              WSP_GETACCOUNT_API_URL: $WSP_GETACCOUNT_API_URL
+              WSP_GETACCOUNT_API_KEY: $WSP_GETACCOUNT_API_KEY
+              WSP_GETACCOUNT_API_PATH: $WSP_GETACCOUNT_API_PATH
               SESSION_SECRET: $SESSION_SECRET
             annotations:
               web-export: true
