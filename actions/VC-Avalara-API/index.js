@@ -38,9 +38,9 @@ function parseBody(params) {
   }
 }
 
-async function getAvalaraToken(tokenParams = {}) {
-  const clientId = tokenParams.client_id || tokenParams.AVALARA_CLIENT_ID;
-  const clientSecret = tokenParams.client_secret || tokenParams.AVALARA_CLIENT_SECRET;
+async function getAvalaraToken(tokenParams = {}, params = {}) {
+  const clientId = tokenParams.client_id || params.AVALARA_CLIENT_ID;
+  const clientSecret = tokenParams.client_secret || params.AVALARA_CLIENT_SECRET;
   const grantType = tokenParams.grant_type || 'client_credentials';
   const scope = tokenParams.scope || 'avatax_api';
 
@@ -67,6 +67,8 @@ async function getAvalaraToken(tokenParams = {}) {
   return response.data;
 }
 
+const BASE_URL = process.env.AVALARA_BASE_URL || 'https://rest.avatax.com/api/v2';
+
 async function resolveAddress(token, addressBody = {}, params = {}) {
   if (!token) {
     throw Object.assign(new Error('Avalara access token is required for address resolution'), { statusCode: 400 });
@@ -89,9 +91,34 @@ async function resolveAddress(token, addressBody = {}, params = {}) {
 
   const response = await axios({
     method: 'POST',
-    url: params.AVALARA_RESOLVE_URL || 'https://rest.avatax.com/api/v2/addresses/resolve',
+    url: `${BASE_URL}/addresses/resolve`,
     headers,
     data: addressBody,
+    timeout: 30000
+  });
+
+  return response.data;
+}
+
+async function createTransaction(token, transactionBody = {}, params = {}) {
+  if (!token) {
+    throw Object.assign(new Error('Avalara access token is required for transaction creation'), { statusCode: 400 });
+  }
+
+  if (!transactionBody || typeof transactionBody !== 'object') {
+    throw Object.assign(new Error('Missing transaction body to create'), { statusCode: 400 });
+  }
+
+  const headers = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${token}`
+  };
+
+  const response = await axios({
+    method: 'POST',
+    url: `${BASE_URL}/transactions/create`,
+    headers,
+    data: transactionBody,
     timeout: 30000
   });
 
@@ -133,7 +160,7 @@ async function main(params) {
         client_secret: body.client_secret || params.AVALARA_CLIENT_SECRET,
         grant_type: body.grant_type || params.AVALARA_GRANT_TYPE || 'client_credentials',
         scope: body.scope || params.AVALARA_SCOPE || 'avatax_api'
-      });
+      }, params);
 
       return {
         statusCode: 200,
@@ -150,7 +177,7 @@ async function main(params) {
           client_secret: body.client_secret || params.AVALARA_CLIENT_SECRET,
           grant_type: body.grant_type || params.AVALARA_GRANT_TYPE || 'client_credentials',
           scope: body.scope || params.AVALARA_SCOPE || 'avatax_api'
-        });
+        }, params);
         token = tokenResponse.access_token;
       }
 
@@ -161,9 +188,29 @@ async function main(params) {
       };
     }
 
+    if (body.operation === 'createTransaction') {
+      let token = body.token || (body.authorization?.replace(/^Bearer\s+/i, '') ?? null);
+
+      if (!token) {
+        const tokenResponse = await getAvalaraToken({
+          client_id: body.client_id || params.AVALARA_CLIENT_ID,
+          client_secret: body.client_secret || params.AVALARA_CLIENT_SECRET,
+          grant_type: body.grant_type || params.AVALARA_GRANT_TYPE || 'client_credentials',
+          scope: body.scope || params.AVALARA_SCOPE || 'avatax_api'
+        }, params);
+        token = tokenResponse.access_token;
+      }
+
+      const transactionResponse = await createTransaction(token, body.transactionData, params);
+      return {
+        statusCode: 200,
+        body: transactionResponse
+      };
+    }
+
     return {
       statusCode: 400,
-      body: JSON.stringify({ error: 'Unsupported operation. Use operation: tokenCreate or resolveAddress' })
+      body: JSON.stringify({ error: 'Unsupported operation. Use operation: tokenCreate, resolveAddress, or createTransaction' })
     };
   } catch (error) {
     return {
