@@ -59,6 +59,21 @@ application:
               raw-http: true
               require-adobe-auth: false
               final: true
+          VC-Magento-API:
+            function: actions/VC-Magento-API/index.js
+            web: secure
+            runtime: nodejs:22
+            inputs:
+              LOG_LEVEL: debug
+              MAGENTO_API_URL: $MAGENTO_API_URL
+              MAGENTO_API_TOKEN: $MAGENTO_API_TOKEN
+              MAGENTO_BEARER_TOKEN: $MAGENTO_BEARER_TOKEN
+              SESSION_SECRET: $SESSION_SECRET
+            annotations:
+              web-export: true
+              raw-http: true
+              require-adobe-auth: false
+              final: true
           VC-Avalara-API:
             function: actions/VC-Avalara-API/index.js
             web: secure
