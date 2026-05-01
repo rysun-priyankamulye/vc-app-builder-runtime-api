@@ -69,7 +69,10 @@ function getPayload(params) {
   const method = String(params.__ow_method || 'get').toLowerCase();
 
   const provider = body.provider || query.provider || PROVIDER_FISERV;
-  const operation = body.operation || query.operation || (method === 'delete' ? 'delete' : 'list');
+  const operationRaw = body.operation || query.operation || (method === 'delete' ? 'delete' : 'list');
+  const operation = ['add', 'create', 'save'].includes(String(operationRaw || '').toLowerCase())
+    ? 'add'
+    : String(operationRaw || '').toLowerCase();
 
   const customerNumbers = {
     customerNumberVC: pickFirst(
@@ -115,7 +118,7 @@ function getPayload(params) {
         query.customer_type
       )
     ),
-    customerId: pickFirst(body.customer_id, query.customer_id),
+    customerId: pickFirst(body.customerId, body.customer_id, query.customerId, query.customer_id),
     cardToken: pickFirst(body.cardToken, body.token, query.cardToken, query.token),
     customerTokenId: pickFirst(body.customerTokenId, body.customer_token_id, query.customerTokenId, query.customer_token_id),
     paymentInstrumentId: pickFirst(
@@ -124,6 +127,95 @@ function getPayload(params) {
       query.paymentInstrumentId,
       query.payment_instrument_id
     ),
+    cardInformation: body.cardInformation || body.card_information || null,
+    cardNumber: pickFirst(
+      body.cardNumber,
+      body.card_number,
+      body.number,
+      body.cc_number,
+      query.cardNumber,
+      query.card_number,
+      query.number,
+      query.cc_number
+    ),
+    cardExpirationMonth: pickFirst(
+      body.cardExpirationMonth,
+      body.card_expiration_month,
+      body.expirationMonth,
+      body.expiration_month,
+      body.cc_expiration_month,
+      query.cardExpirationMonth,
+      query.card_expiration_month,
+      query.expirationMonth,
+      query.expiration_month,
+      query.cc_expiration_month
+    ),
+    cardExpirationYear: pickFirst(
+      body.cardExpirationYear,
+      body.card_expiration_year,
+      body.expirationYear,
+      body.expiration_year,
+      body.cc_expiration_year,
+      query.cardExpirationYear,
+      query.card_expiration_year,
+      query.expirationYear,
+      query.expiration_year,
+      query.cc_expiration_year
+    ),
+    cardCvv: pickFirst(
+      body.cardCvv,
+      body.card_cvv,
+      body.ccv,
+      body.cvv,
+      body.cc_cvv,
+      query.cardCvv,
+      query.card_cvv,
+      query.ccv,
+      query.cvv,
+      query.cc_cvv
+    ),
+    cardType: pickFirst(
+      body.cardType,
+      body.card_type,
+      body.type,
+      body.cc_type,
+      query.cardType,
+      query.card_type,
+      query.type,
+      query.cc_type
+    ),
+    cardHolderName: pickFirst(
+      body.cardHolderName,
+      body.card_holder_name,
+      body.cc_holder_name,
+      body.name_on_card,
+      query.cardHolderName,
+      query.card_holder_name,
+      query.cc_holder_name,
+      query.name_on_card
+    ),
+    cardNickname: pickFirst(
+      body.cardNickname,
+      body.card_nickname,
+      body.cc_nickname,
+      query.cardNickname,
+      query.card_nickname,
+      query.cc_nickname
+    ),
+    transactionAmount: pickFirst(body.transactionAmount, body.transaction_amount, query.transactionAmount, query.transaction_amount),
+    saveForFutureOrders: body.saveForFutureOrders ?? body.save_for_future_orders ?? body.save_credit_card ?? body.saveCard ?? query.saveForFutureOrders ?? query.save_for_future_orders ?? query.save_credit_card ?? query.saveCard ?? null,
+    currency: pickFirst(body.currency, query.currency),
+    reference: pickFirst(body.reference, body.orderReference, body.order_reference, query.reference, query.orderReference, query.order_reference),
+    purchaseOrder: pickFirst(body.purchaseOrder, body.purchase_order, body.po, query.purchaseOrder, query.purchase_order, query.po),
+    orderId: pickFirst(body.orderId, body.order_id, body.incrementId, body.increment_id, query.orderId, query.order_id, query.incrementId, query.increment_id),
+    billTo: body.billTo || body.bill_to || body.billingAddress || body.billing_address || null,
+    billingAddressId: pickFirst(
+      body.billingAddressId,
+      body.billing_address_id,
+      query.billingAddressId,
+      query.billing_address_id
+    ),
+    isDefaultCard: body.isDefaultCard ?? body.is_default ?? body.isDefault ?? query.isDefaultCard ?? query.is_default ?? query.isDefault ?? null,
     customerNumbers
   };
 }
@@ -142,7 +234,8 @@ function buildProviderConfig(params, provider) {
       appNameWholesale: params.FISERV_USB_X_APPLICATION_NAME_WHOLESALE,
       appNameRetail: params.FISERV_USB_X_APPLICATION_NAME_RETAIL,
       listPath: params.FISERV_USB_LIST_PATH || 'api/FiservPayment/saved-cards',
-      deletePath: params.FISERV_USB_DELETE_PATH || 'api/FiservPayment/delete-card'
+      deletePath: params.FISERV_USB_DELETE_PATH || 'api/FiservPayment/delete-card',
+      addPath: params.FISERV_USB_ADD_PATH || 'api/FiservPayment/authorize'
     };
   }
 
@@ -331,6 +424,203 @@ function buildProviderHeaders(config, payload = null) {
   }
 
   return headers;
+}
+
+function normalizeBoolean(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (raw === 'true' || raw === '1' || raw === 'yes') return true;
+  if (raw === 'false' || raw === '0' || raw === 'no') return false;
+  return null;
+}
+
+function buildCardInformation(payload) {
+  if (payload.cardInformation && typeof payload.cardInformation === 'object') {
+    return {
+      number: pickFirst(
+        payload.cardInformation.number,
+        payload.cardInformation.cardNumber,
+        payload.cardInformation.cc_number
+      ),
+      expirationMonth: pickFirst(
+        payload.cardInformation.expirationMonth,
+        payload.cardInformation.expiration_month,
+        payload.cardInformation.cc_exp_month
+      ),
+      expirationYear: pickFirst(
+        payload.cardInformation.expirationYear,
+        payload.cardInformation.expiration_year,
+        payload.cardInformation.cc_exp_year
+      ),
+      cvv: pickFirst(
+        payload.cardInformation.cvv,
+        payload.cardInformation.securityCode,
+        payload.cardInformation.ccv
+      ),
+      type: pickFirst(
+        payload.cardInformation.type,
+        payload.cardInformation.cardType,
+        payload.cardInformation.cc_type
+      ),
+      holderName: pickFirst(
+        payload.cardInformation.holderName,
+        payload.cardInformation.holder_name,
+        payload.cardInformation.cardHolderName,
+        payload.cardInformation.card_holder_name,
+        payload.cardInformation.cc_holder_name,
+        payload.cardInformation.name_on_card
+      ),
+      nickName: pickFirst(
+        payload.cardInformation.nickName,
+        payload.cardInformation.nick_name,
+        payload.cardInformation.cardNickname,
+        payload.cardInformation.card_nickname,
+        payload.cardInformation.cc_nickname
+      )
+    };
+  }
+
+  if (payload.cardNumber || payload.cardExpirationMonth || payload.cardExpirationYear || payload.cardCvv || payload.cardType || payload.cardHolderName || payload.cardNickname) {
+    return {
+      number: payload.cardNumber,
+      expirationMonth: payload.cardExpirationMonth,
+      expirationYear: payload.cardExpirationYear,
+      cvv: payload.cardCvv,
+      type: payload.cardType,
+      holderName: payload.cardHolderName,
+      nickName: payload.cardNickname
+    };
+  }
+
+  return null;
+}
+
+function buildFiservCreatePayload(payload, customerNumbers) {
+  const cardInformation = buildCardInformation(payload);
+  const saveForFutureOrders = normalizeBoolean(payload.saveForFutureOrders);
+  const shouldSave = saveForFutureOrders === null ? true : saveForFutureOrders;
+
+  const body = {
+    ...customerNumbers,
+    transactionAmount: payload.transactionAmount || 0,
+    currency: payload.currency || 'USD',
+    reference: payload.reference || payload.purchaseOrder || 'save-card',
+    purchaseOrder: payload.purchaseOrder || payload.reference || 'save-card',
+    orderId: payload.orderId || payload.customerId || '0',
+    saveForFutureOrders: shouldSave
+  };
+
+  if (payload.customerType) {
+    body.customerType = payload.customerType;
+  }
+
+  if (payload.billTo && typeof payload.billTo === 'object') {
+    body.billTo = payload.billTo;
+  }
+
+  if (!body.billTo && payload.billingAddress && typeof payload.billingAddress === 'object') {
+    body.billTo = payload.billingAddress;
+  }
+
+  if (cardInformation) {
+    body.cardInformation = { ...cardInformation };
+    if (cardInformation.holderName) {
+      body.cardInformation.holderName = cardInformation.holderName;
+    }
+    if (cardInformation.nickName) {
+      body.cardInformation.nickName = cardInformation.nickName;
+    }
+  }
+
+  if (payload.billingAddressId) {
+    body.billingAddressId = payload.billingAddressId;
+  }
+
+  if (payload.isDefaultCard !== null && payload.isDefaultCard !== undefined) {
+    body.isDefaultCard = payload.isDefaultCard;
+  }
+
+  if (payload.cardNickname && !body.cardInformation?.nickName) {
+    if (!body.cardInformation) {
+      body.cardInformation = {};
+    }
+    body.cardInformation.nickName = payload.cardNickname;
+  }
+
+  if (payload.cardHolderName && !body.cardInformation?.holderName) {
+    if (!body.cardInformation) {
+      body.cardInformation = {};
+    }
+    body.cardInformation.holderName = payload.cardHolderName;
+  }
+
+  if (payload.cardToken) {
+    body.token = payload.cardToken;
+    if (payload.cardCvv) {
+      body.cc_cid = payload.cardCvv;
+    }
+  }
+
+  return body;
+}
+
+async function createFiservCard(config, customerNumbers, payload) {
+  const body = buildFiservCreatePayload(payload, customerNumbers);
+  if (!body.cardInformation && !body.token) {
+    throw new Error('Missing card data for add operation. Provide cardInformation or cardToken.');
+  }
+
+  return axios({
+    method: 'POST',
+    url: buildUrl(config.baseUrl, config.addPath),
+    headers: buildProviderHeaders(config, payload),
+    data: body,
+    timeout: 30000
+  });
+}
+
+function buildCybersourceCardPayload(payload) {
+  const cardInformation = buildCardInformation(payload);
+  if (cardInformation) {
+    const card = {
+      number: cardInformation.number,
+      expirationMonth: cardInformation.expirationMonth,
+      expirationYear: cardInformation.expirationYear,
+      securityCode: cardInformation.cvv
+    };
+
+    if (cardInformation.holderName) {
+      card.cardholderName = cardInformation.holderName;
+    }
+
+    return {
+      paymentInstrument: {
+        card
+      }
+    };
+  }
+
+  if (payload.cardToken) {
+    return {
+      paymentInstrument: {
+        tokenizedCard: {
+          transactionType: '1',
+          token: payload.cardToken
+        }
+      }
+    };
+  }
+
+  return null;
+}
+
+async function createCybersourceCard(config, customerTokenId, payload, debug = false) {
+  const prefix = trimSlashes(config.tmsCustomerPathPrefix || 'tms/v2/customers');
+  const path = `${prefix}/${toSafePathSegment(customerTokenId)}/payment-instruments`;
+  const body = buildCybersourceCardPayload(payload);
+  if (!body) {
+    throw new Error('Missing card data for CyberSource add operation. Provide cardInformation or cardToken.');
+  }
+  return callCybersource(config, 'POST', path, body, debug);
 }
 
 async function listCards(config, requestFields, payload = null) {
@@ -547,6 +837,8 @@ async function main(params) {
           };
         }
         response = await deleteCybersourceCard(providerConfig, customerTokenId, paymentInstrumentId, debug);
+      } else if (payload.operation === 'add') {
+        response = await createCybersourceCard(providerConfig, customerTokenId, payload, debug);
       } else {
         return {
           statusCode: 400,
@@ -589,6 +881,8 @@ async function main(params) {
         };
       }
       response = await deleteCard(providerConfig, customerNumbers, payload.cardToken, payload);
+    } else if (payload.operation === 'add') {
+      response = await createFiservCard(providerConfig, customerNumbers, payload);
     } else {
       return {
         statusCode: 400,
