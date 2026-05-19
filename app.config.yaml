@@ -11,7 +11,7 @@ application:
             web: secure
             runtime: nodejs:22
             inputs:
-              LOG_LEVEL: debug
+              LOG_LEVEL: $LOG_LEVEL
               D365_APP_ID: $D365_APP_ID
               D365_API_URL: $D365_API_URL
               D365_CLIENT_ID: $D365_CLIENT_ID
@@ -30,13 +30,11 @@ application:
             web: secure
             runtime: nodejs:22
             inputs:
-              LOG_LEVEL: debug
+              LOG_LEVEL: $LOG_LEVEL
               BOOMI_API_URL: $BOOMI_API_URL
-              BOOMI_API_URL_DEV: $BOOMI_API_URL_DEV
               V1_BOOMI_API_KEY: $V1_BOOMI_API_KEY
               V2_BOOMI_API_KEY: $V2_BOOMI_API_KEY
               BOOMI_API_KEY: $BOOMI_API_KEY
-              BOOMI_API_KEY_DEV: $BOOMI_API_KEY_DEV
               SESSION_SECRET: $SESSION_SECRET
             annotations:
               web-export: true
@@ -48,7 +46,7 @@ application:
             web: secure
             runtime: nodejs:22
             inputs:
-              LOG_LEVEL: debug
+              LOG_LEVEL: $LOG_LEVEL
               PARTNER_INSIGHT_API_URL: $PARTNER_INSIGHT_API_URL
               PARTNER_INSIGHT_API_KEY: $PARTNER_INSIGHT_API_KEY
               WSP_GETACCOUNT_API_URL: $WSP_GETACCOUNT_API_URL
@@ -64,7 +62,7 @@ application:
             web: secure
             runtime: nodejs:22
             inputs:
-              LOG_LEVEL: debug
+              LOG_LEVEL: $LOG_LEVEL
               MAGENTO_API_URL: $MAGENTO_API_URL
               MAGENTO_API_TOKEN: $MAGENTO_API_TOKEN
               MAGENTO_BEARER_TOKEN: $MAGENTO_BEARER_TOKEN
@@ -79,7 +77,7 @@ application:
             web: secure
             runtime: nodejs:22
             inputs:
-              LOG_LEVEL: debug
+              LOG_LEVEL: $LOG_LEVEL
               AVALARA_CLIENT_ID: $AVALARA_CLIENT_ID
               AVALARA_CLIENT_SECRET: $AVALARA_CLIENT_SECRET
               AVALARA_GRANT_TYPE: $AVALARA_GRANT_TYPE
@@ -97,7 +95,7 @@ application:
             web: secure
             runtime: nodejs:22
             inputs:
-              LOG_LEVEL: debug
+              LOG_LEVEL: $LOG_LEVEL
               FISERV_USB_API_URL: $FISERV_USB_API_URL
               FISERV_USB_API_KEY: $FISERV_USB_API_KEY
               FISERV_USB_X_APPLICATION_NAME: $FISERV_USB_X_APPLICATION_NAME
@@ -106,12 +104,8 @@ application:
               FISERV_USB_LIST_PATH: $FISERV_USB_LIST_PATH
               FISERV_USB_DELETE_PATH: $FISERV_USB_DELETE_PATH
               FISERV_USB_ADD_PATH: $FISERV_USB_ADD_PATH
-              CYBERSOURCE_API_BASE_URL: $CYBERSOURCE_API_BASE_URL
-              CYBERSOURCE_USE_TEST_MODE: $CYBERSOURCE_USE_TEST_MODE
-              CYBERSOURCE_MERCHANT_ID: $CYBERSOURCE_MERCHANT_ID
-              CYBERSOURCE_REST_KEY_ID: $CYBERSOURCE_REST_KEY_ID
-              CYBERSOURCE_REST_KEY_VALUE: $CYBERSOURCE_REST_KEY_VALUE
-              CYBERSOURCE_TMS_CUSTOMER_PATH_PREFIX: $CYBERSOURCE_TMS_CUSTOMER_PATH_PREFIX
+              FISERV_USB_RSA_PUBLIC_KEY: $FISERV_USB_RSA_PUBLIC_KEY
+              FISERV_RSA_PUBLIC_KEY: $FISERV_RSA_PUBLIC_KEY
               WSP_GETACCOUNT_API_URL: $WSP_GETACCOUNT_API_URL
               WSP_GETACCOUNT_API_KEY: $WSP_GETACCOUNT_API_KEY
               WSP_GETACCOUNT_API_PATH: $WSP_GETACCOUNT_API_PATH
@@ -126,7 +120,7 @@ application:
             web: secure
             runtime: nodejs:22
             inputs:
-              LOG_LEVEL: debug
+              LOG_LEVEL: $LOG_LEVEL
             annotations:
               web-export: true
               raw-http: true

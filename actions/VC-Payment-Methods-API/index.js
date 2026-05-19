@@ -3,8 +3,6 @@ const crypto = require('crypto');
 
 const PROVIDER_FISERV = 'fiserv';
 const PROVIDER_FISERV_US_BUSINESS = 'fiserv_us_business';
-const PROVIDER_CYBERSOURCE = 'cybersource';
-const PROVIDER_CYBERSOURCE_US_BUSINESS = 'cybersource_us_business';
 const SECRET = process.env.SESSION_SECRET || 'replace-this-secret';
 
 function shouldDebug(params) {
@@ -70,9 +68,12 @@ function getPayload(params) {
 
   const provider = body.provider || query.provider || PROVIDER_FISERV;
   const operationRaw = body.operation || query.operation || (method === 'delete' ? 'delete' : 'list');
-  const operation = ['add', 'create', 'save'].includes(String(operationRaw || '').toLowerCase())
+  const normalizedOperation = String(operationRaw || '').toLowerCase();
+  const operation = ['add', 'create', 'save'].includes(normalizedOperation)
     ? 'add'
-    : String(operationRaw || '').toLowerCase();
+    : ['detect', 'card-meta', 'card_meta', 'network', 'card-network', 'card_network'].includes(normalizedOperation)
+      ? 'detect'
+      : normalizedOperation;
 
   const customerNumbers = {
     customerNumberVC: pickFirst(
@@ -226,33 +227,19 @@ function trimSlashes(value) {
 
 function buildProviderConfig(params, provider) {
   if (provider === PROVIDER_FISERV || provider === PROVIDER_FISERV_US_BUSINESS) {
+    const rsaPublicKey = params.FISERV_USB_RSA_PUBLIC_KEY || params.FISERV_RSA_PUBLIC_KEY || process.env.FISERV_USB_RSA_PUBLIC_KEY || process.env.FISERV_RSA_PUBLIC_KEY;
+    console.log('[DEBUG] Fiserv RSA Public Key resolved:', rsaPublicKey ? 'Present' : 'Missing', 'Length:', rsaPublicKey ? rsaPublicKey.length : 0);
     return {
       provider,
-      baseUrl: params.FISERV_USB_API_URL,
-      apiKey: params.FISERV_USB_API_KEY,
-      appName: params.FISERV_USB_X_APPLICATION_NAME,
-      appNameWholesale: params.FISERV_USB_X_APPLICATION_NAME_WHOLESALE,
-      appNameRetail: params.FISERV_USB_X_APPLICATION_NAME_RETAIL,
-      listPath: params.FISERV_USB_LIST_PATH || 'api/FiservPayment/saved-cards',
-      deletePath: params.FISERV_USB_DELETE_PATH || 'api/FiservPayment/delete-card',
-      addPath: params.FISERV_USB_ADD_PATH || 'api/FiservPayment/authorize'
-    };
-  }
-
-  if (provider === PROVIDER_CYBERSOURCE || provider === PROVIDER_CYBERSOURCE_US_BUSINESS) {
-    const useTestMode = String(params.CYBERSOURCE_USE_TEST_MODE || '').toLowerCase();
-    const defaultBaseUrl = useTestMode === '1' || useTestMode === 'true'
-      ? 'https://apitest.cybersource.com'
-      : 'https://api.cybersource.com';
-
-    return {
-      provider,
-      // CyberSource direct credentials (REST HTTP Signature auth)
-      baseUrl: params.CYBERSOURCE_API_BASE_URL || defaultBaseUrl,
-      merchantId: params.CYBERSOURCE_MERCHANT_ID || '',
-      keyId: params.CYBERSOURCE_REST_KEY_ID || '',
-      sharedSecret: params.CYBERSOURCE_REST_KEY_VALUE || '',
-      tmsCustomerPathPrefix: params.CYBERSOURCE_TMS_CUSTOMER_PATH_PREFIX || 'tms/v2/customers'
+      baseUrl: params.FISERV_USB_API_URL || process.env.FISERV_USB_API_URL,
+      apiKey: params.FISERV_USB_API_KEY || process.env.FISERV_USB_API_KEY,
+      appName: params.FISERV_USB_X_APPLICATION_NAME || process.env.FISERV_USB_X_APPLICATION_NAME,
+      appNameWholesale: params.FISERV_USB_X_APPLICATION_NAME_WHOLESALE || process.env.FISERV_USB_X_APPLICATION_NAME_WHOLESALE,
+      appNameRetail: params.FISERV_USB_X_APPLICATION_NAME_RETAIL || process.env.FISERV_USB_X_APPLICATION_NAME_RETAIL,
+      listPath: params.FISERV_USB_LIST_PATH || process.env.FISERV_USB_LIST_PATH || 'api/FiservPayment/saved-cards',
+      deletePath: params.FISERV_USB_DELETE_PATH || process.env.FISERV_USB_DELETE_PATH || 'api/FiservPayment/delete-card',
+      addPath: params.FISERV_USB_ADD_PATH || process.env.FISERV_USB_ADD_PATH || 'api/FiservPayment/authorize',
+      rsaPublicKey
     };
   }
 
@@ -426,6 +413,58 @@ function buildProviderHeaders(config, payload = null) {
   return headers;
 }
 
+function normalizeRsaPublicKey(rawKey) {
+  if (!rawKey || typeof rawKey !== 'string') {
+    return '';
+  }
+
+  let key = rawKey.trim();
+  if (key.includes('\\n') && !key.includes('\n')) {
+    key = key.replace(/\\n/g, '\n');
+  }
+
+  return key;
+}
+
+function encryptFiservField(value, publicKey) {
+  if (value === null || value === undefined || String(value).trim() === '') {
+    return '';
+  }
+
+  const key = normalizeRsaPublicKey(publicKey);
+  if (!key) {
+    throw new Error('Missing Fiserv RSA public key for encrypting card data');
+  }
+
+  try {
+    const encrypted = crypto.publicEncrypt(
+      {
+        key,
+        padding: crypto.constants.RSA_PKCS1_PADDING
+      },
+      Buffer.from(String(value), 'utf-8')
+    );
+
+    return encrypted.toString('base64');
+  } catch (error) {
+    throw new Error(`Fiserv RSA encryption failed: ${error.message}`);
+  }
+}
+
+function encryptFiservCardInformation(cardInformation, publicKey) {
+  if (!cardInformation || typeof cardInformation !== 'object') {
+    return null;
+  }
+
+  return {
+    ...cardInformation,
+    number: encryptFiservField(cardInformation.number, publicKey),
+    expirationMonth: encryptFiservField(cardInformation.expirationMonth, publicKey),
+    expirationYear: encryptFiservField(cardInformation.expirationYear, publicKey),
+    cvv: encryptFiservField(cardInformation.cvv, publicKey)
+  };
+}
+
 function normalizeBoolean(value) {
   const raw = String(value || '').trim().toLowerCase();
   if (raw === 'true' || raw === '1' || raw === 'yes') return true;
@@ -433,14 +472,122 @@ function normalizeBoolean(value) {
   return null;
 }
 
+function getNormalizedCardNumber(payload) {
+  const cardInformationNumber = payload.cardInformation && typeof payload.cardInformation === 'object'
+    ? pickFirst(
+      payload.cardInformation.number,
+      payload.cardInformation.cardNumber,
+      payload.cardInformation.cc_number
+    )
+    : '';
+
+  return String(cardInformationNumber || payload.cardNumber || '').replace(/\D/g, '');
+}
+
+function detectCardNetwork(cardNumber) {
+  if (!cardNumber) {
+    return 'unknown';
+  }
+
+  if (/^4\d{12}(\d{3})?(\d{3})?$/.test(cardNumber)) {
+    return 'visa';
+  }
+
+  if (/^(5[1-5]\d{14}|2(2[2-9]\d{12}|[3-6]\d{13}|7[01]\d{12}|720\d{12}))$/.test(cardNumber)) {
+    return 'mastercard';
+  }
+
+  if (/^3[47]\d{13}$/.test(cardNumber)) {
+    return 'amex';
+  }
+
+  if (/^6(?:011|5\d{2}|4[4-9]\d|22(?:1[2-9]|[2-8]\d|9[01]))\d{12}$/.test(cardNumber)) {
+    return 'discover';
+  }
+
+  return 'unknown';
+}
+
+function passesLuhn(cardNumber) {
+  if (!cardNumber) {
+    return false;
+  }
+
+  let sum = 0;
+  let shouldDouble = false;
+
+  for (let index = cardNumber.length - 1; index >= 0; index -= 1) {
+    let digit = Number(cardNumber[index]);
+    if (Number.isNaN(digit)) {
+      return false;
+    }
+
+    if (shouldDouble) {
+      digit *= 2;
+      if (digit > 9) {
+        digit -= 9;
+      }
+    }
+
+    sum += digit;
+    shouldDouble = !shouldDouble;
+  }
+
+  return sum % 10 === 0;
+}
+
+function maskCardNumber(cardNumber) {
+  if (!cardNumber) {
+    return '';
+  }
+
+  const visibleDigits = cardNumber.slice(-4);
+  const maskedLength = Math.max(cardNumber.length - 4, 0);
+  return `${'*'.repeat(maskedLength)}${visibleDigits}`;
+}
+
+function detectCardMetadata(payload) {
+  const cardNumber = getNormalizedCardNumber(payload);
+  const networkType = detectCardNetwork(cardNumber);
+  const networkCodeMap = {
+    visa: 'VI',
+    mastercard: 'MC',
+    amex: 'AX',
+    discover: 'DI',
+    unknown: ''
+  };
+  const networkCode = networkCodeMap[networkType] || '';
+
+  return {
+    cardNumberMasked: maskCardNumber(cardNumber),
+    cardNumberLength: cardNumber.length,
+    networkType,
+    networkCode,
+    isKnownNetwork: networkType !== 'unknown',
+    passesLuhn: passesLuhn(cardNumber),
+    isPotentiallyValid: cardNumber.length >= 12 && passesLuhn(cardNumber) && networkType !== 'unknown'
+  };
+}
+
+function splitCardHolderName(holderName) {
+  if (!holderName || typeof holderName !== 'string') {
+    return { firstName: '', lastName: '' };
+  }
+  const parts = holderName.trim().split(/\s+/);
+  return {
+    firstName: parts[0] || '',
+    lastName: parts.slice(1).join(' ') || ''
+  };
+}
+
 function buildCardInformation(payload) {
   if (payload.cardInformation && typeof payload.cardInformation === 'object') {
     return {
-      number: pickFirst(
+      number: String(pickFirst(
         payload.cardInformation.number,
         payload.cardInformation.cardNumber,
         payload.cardInformation.cc_number
-      ),
+      ) || '').replace(/\D/g, ''),
       expirationMonth: pickFirst(
         payload.cardInformation.expirationMonth,
         payload.cardInformation.expiration_month,
@@ -461,6 +608,7 @@ function buildCardInformation(payload) {
         payload.cardInformation.cardType,
         payload.cardInformation.cc_type
       ),
+      cardState: '',
       holderName: pickFirst(
         payload.cardInformation.holderName,
         payload.cardInformation.holder_name,
@@ -481,11 +629,12 @@ function buildCardInformation(payload) {
 
   if (payload.cardNumber || payload.cardExpirationMonth || payload.cardExpirationYear || payload.cardCvv || payload.cardType || payload.cardHolderName || payload.cardNickname) {
     return {
-      number: payload.cardNumber,
+      number: String(payload.cardNumber || '').replace(/\D/g, ''),
       expirationMonth: payload.cardExpirationMonth,
       expirationYear: payload.cardExpirationYear,
       cvv: payload.cardCvv,
       type: payload.cardType,
+      cardState: '',
       holderName: payload.cardHolderName,
       nickName: payload.cardNickname
     };
@@ -494,7 +643,7 @@ function buildCardInformation(payload) {
   return null;
 }
 
-function buildFiservCreatePayload(payload, customerNumbers) {
+function buildFiservCreatePayload(payload, customerNumbers, rsaPublicKey) {
   const cardInformation = buildCardInformation(payload);
   const saveForFutureOrders = normalizeBoolean(payload.saveForFutureOrders);
   const shouldSave = saveForFutureOrders === null ? true : saveForFutureOrders;
@@ -513,6 +662,23 @@ function buildFiservCreatePayload(payload, customerNumbers) {
     body.customerType = payload.customerType;
   }
 
+  if (payload.customerId) {
+    body.customerId = payload.customerId;
+    body.userId = payload.customerId;
+  }
+
+  const holderName = cardInformation?.holderName || payload.cardHolderName;
+  const { firstName, lastName } = splitCardHolderName(holderName);
+  if (!body.billTo) {
+    body.billTo = {};
+  }
+  if (firstName) {
+    body.billTo.firstName = firstName;
+  }
+  if (lastName) {
+    body.billTo.lastName = lastName;
+  }
+
   if (payload.billTo && typeof payload.billTo === 'object') {
     body.billTo = payload.billTo;
   }
@@ -522,7 +688,7 @@ function buildFiservCreatePayload(payload, customerNumbers) {
   }
 
   if (cardInformation) {
-    body.cardInformation = { ...cardInformation };
+    body.cardInformation = encryptFiservCardInformation(cardInformation, rsaPublicKey);
     if (cardInformation.holderName) {
       body.cardInformation.holderName = cardInformation.holderName;
     }
@@ -556,7 +722,7 @@ function buildFiservCreatePayload(payload, customerNumbers) {
   if (payload.cardToken) {
     body.token = payload.cardToken;
     if (payload.cardCvv) {
-      body.cc_cid = payload.cardCvv;
+      body.CvvEncrypted = encryptFiservField(payload.cardCvv, rsaPublicKey);
     }
   }
 
@@ -564,7 +730,7 @@ function buildFiservCreatePayload(payload, customerNumbers) {
 }
 
 async function createFiservCard(config, customerNumbers, payload) {
-  const body = buildFiservCreatePayload(payload, customerNumbers);
+  const body = buildFiservCreatePayload(payload, customerNumbers, config.rsaPublicKey);
   if (!body.cardInformation && !body.token) {
     throw new Error('Missing card data for add operation. Provide cardInformation or cardToken.');
   }
@@ -576,51 +742,6 @@ async function createFiservCard(config, customerNumbers, payload) {
     data: body,
     timeout: 30000
   });
-}
-
-function buildCybersourceCardPayload(payload) {
-  const cardInformation = buildCardInformation(payload);
-  if (cardInformation) {
-    const card = {
-      number: cardInformation.number,
-      expirationMonth: cardInformation.expirationMonth,
-      expirationYear: cardInformation.expirationYear,
-      securityCode: cardInformation.cvv
-    };
-
-    if (cardInformation.holderName) {
-      card.cardholderName = cardInformation.holderName;
-    }
-
-    return {
-      paymentInstrument: {
-        card
-      }
-    };
-  }
-
-  if (payload.cardToken) {
-    return {
-      paymentInstrument: {
-        tokenizedCard: {
-          transactionType: '1',
-          token: payload.cardToken
-        }
-      }
-    };
-  }
-
-  return null;
-}
-
-async function createCybersourceCard(config, customerTokenId, payload, debug = false) {
-  const prefix = trimSlashes(config.tmsCustomerPathPrefix || 'tms/v2/customers');
-  const path = `${prefix}/${toSafePathSegment(customerTokenId)}/payment-instruments`;
-  const body = buildCybersourceCardPayload(payload);
-  if (!body) {
-    throw new Error('Missing card data for CyberSource add operation. Provide cardInformation or cardToken.');
-  }
-  return callCybersource(config, 'POST', path, body, debug);
 }
 
 async function listCards(config, requestFields, payload = null) {
@@ -645,128 +766,6 @@ async function deleteCard(config, requestFields, cardToken, payload = null) {
     },
     timeout: 30000
   });
-}
-
-function isCybersourceProvider(provider) {
-  return provider === PROVIDER_CYBERSOURCE || provider === PROVIDER_CYBERSOURCE_US_BUSINESS;
-}
-
-function toSafePathSegment(value) {
-  return encodeURIComponent(String(value || '').trim());
-}
-
-function hashBody(body = '') {
-  return crypto.createHash('sha256').update(body, 'utf8').digest('base64');
-}
-
-function createCybersourceSignature({
-  method,
-  host,
-  pathWithQuery,
-  merchantId,
-  keyId,
-  sharedSecret,
-  date,
-  digestHeader
-}) {
-  const headersList = ['host', 'date', '(request-target)', 'v-c-merchant-id'];
-  const lines = [
-    `host: ${host}`,
-    `date: ${date}`,
-    `(request-target): ${String(method).toLowerCase()} ${pathWithQuery}`,
-    `v-c-merchant-id: ${merchantId}`
-  ];
-
-  if (digestHeader) {
-    headersList.push('digest');
-    lines.push(`digest: ${digestHeader}`);
-  }
-
-  const signatureString = lines.join('\n');
-
-  // CyberSource shared secret is usually base64 encoded.
-  let hmacKey;
-  try {
-    hmacKey = Buffer.from(sharedSecret, 'base64');
-    if (!hmacKey || hmacKey.length === 0) {
-      hmacKey = Buffer.from(sharedSecret, 'utf8');
-    }
-  } catch {
-    hmacKey = Buffer.from(sharedSecret, 'utf8');
-  }
-
-  const signature = crypto.createHmac('sha256', hmacKey)
-    .update(signatureString, 'utf8')
-    .digest('base64');
-
-  return `keyid="${keyId}", algorithm="HmacSHA256", headers="${headersList.join(' ')}", signature="${signature}"`;
-}
-
-async function callCybersource(config, method, path, body = null, debug = false) {
-  const base = String(config.baseUrl || '').replace(/\/+$/, '');
-  const normalizedPath = `/${trimSlashes(path)}`;
-  const url = `${base}${normalizedPath}`;
-  const host = new URL(base).host;
-  const date = new Date().toUTCString();
-  const payload = body ? JSON.stringify(body) : '';
-  const digestHeader = payload ? `SHA-256=${hashBody(payload)}` : null;
-
-  const signature = createCybersourceSignature({
-    method,
-    host,
-    pathWithQuery: normalizedPath,
-    merchantId: config.merchantId,
-    keyId: config.keyId,
-    sharedSecret: config.sharedSecret,
-    date,
-    digestHeader
-  });
-
-  const headers = {
-    Accept: 'application/hal+json;charset=utf-8',
-    'Content-Type': 'application/json;charset=utf-8',
-    Host: host,
-    Date: date,
-    'v-c-merchant-id': config.merchantId,
-    Signature: signature
-  };
-
-  if (digestHeader) {
-    headers.Digest = digestHeader;
-  }
-
-  if (debug) {
-    console.log('[VC-Payment-Methods-API][CyberSource] request meta', {
-      method,
-      host,
-      path: normalizedPath,
-      merchantId: config.merchantId,
-      keyId: config.keyId,
-      date,
-      hasDigest: Boolean(digestHeader),
-      baseUrl: base
-    });
-  }
-
-  return axios({
-    method,
-    url,
-    headers,
-    data: payload || undefined,
-    timeout: 30000
-  });
-}
-
-async function listCybersourceCards(config, customerTokenId, debug = false) {
-  const prefix = trimSlashes(config.tmsCustomerPathPrefix || 'tms/v2/customers');
-  const path = `${prefix}/${toSafePathSegment(customerTokenId)}/payment-instruments`;
-  return callCybersource(config, 'GET', path, null, debug);
-}
-
-async function deleteCybersourceCard(config, customerTokenId, paymentInstrumentId, debug = false) {
-  const prefix = trimSlashes(config.tmsCustomerPathPrefix || 'tms/v2/customers');
-  const path = `${prefix}/${toSafePathSegment(customerTokenId)}/payment-instruments/${toSafePathSegment(paymentInstrumentId)}`;
-  return callCybersource(config, 'DELETE', path, null, debug);
 }
 
 async function main(params) {
@@ -797,6 +796,21 @@ async function main(params) {
     };
   }
 
+  if (payload.operation === 'detect') {
+    const cardNumber = getNormalizedCardNumber(payload);
+    if (!cardNumber) {
+      return {
+        statusCode: 400,
+        body: { error: 'Missing required parameter: cardNumber (or cardInformation.number)' }
+      };
+    }
+
+    return {
+      statusCode: 200,
+      body: detectCardMetadata(payload)
+    };
+  }
+
   const providerConfig = buildProviderConfig(params, payload.provider);
   if (!providerConfig) {
     return {
@@ -806,52 +820,6 @@ async function main(params) {
   }
 
   try {
-    if (isCybersourceProvider(payload.provider)) {
-      const debug = shouldDebug(params);
-      if (!providerConfig.baseUrl || !providerConfig.merchantId || !providerConfig.keyId || !providerConfig.sharedSecret) {
-        return {
-          statusCode: 500,
-          body: {
-            error: `Missing CyberSource configuration. Required: CYBERSOURCE_API_BASE_URL, CYBERSOURCE_MERCHANT_ID, CYBERSOURCE_REST_KEY_ID, CYBERSOURCE_REST_KEY_VALUE`
-          }
-        };
-      }
-
-      const customerTokenId = payload.customerTokenId || payload.customerId;
-      if (!customerTokenId) {
-        return {
-          statusCode: 400,
-          body: { error: 'Missing required parameter: customerTokenId (or customer_id)' }
-        };
-      }
-
-      let response;
-      if (payload.operation === 'list') {
-        response = await listCybersourceCards(providerConfig, customerTokenId, debug);
-      } else if (payload.operation === 'delete') {
-        const paymentInstrumentId = payload.paymentInstrumentId || payload.cardToken;
-        if (!paymentInstrumentId) {
-          return {
-            statusCode: 400,
-            body: { error: 'Missing required parameter: paymentInstrumentId (or cardToken)' }
-          };
-        }
-        response = await deleteCybersourceCard(providerConfig, customerTokenId, paymentInstrumentId, debug);
-      } else if (payload.operation === 'add') {
-        response = await createCybersourceCard(providerConfig, customerTokenId, payload, debug);
-      } else {
-        return {
-          statusCode: 400,
-          body: { error: `Unsupported operation: ${payload.operation}` }
-        };
-      }
-
-      return {
-        statusCode: response.status,
-        body: response.data
-      };
-    }
-
     if (!providerConfig.baseUrl || !providerConfig.apiKey) {
       return {
         statusCode: 500,
@@ -895,16 +863,26 @@ async function main(params) {
       body: response.data
     };
   } catch (error) {
-    if (isCybersourceProvider(payload.provider) && shouldDebug(params)) {
-      console.log('[VC-Payment-Methods-API][CyberSource] error meta', {
-        status: error.response?.status || 500,
-        message: error.message,
-        responseData: error.response?.data || null
-      });
+    const debug = shouldDebug(params);
+    const errorMeta = {
+      provider: payload.provider,
+      operation: payload.operation,
+      status: error.response?.status || error.code || 'unknown',
+      message: error.message,
+      responseData: error.response?.data || null,
+      requestUrl: error.config?.url || null,
+      requestMethod: error.config?.method || null
+    };
+
+    if (debug) {
+      console.log('[VC-Payment-Methods-API] error meta', errorMeta);
     }
+
     return {
       statusCode: error.response?.status || 500,
-      body: error.response?.data || { error: 'Payment provider request failed' }
+      body: debug
+        ? { error: 'Payment provider request failed', details: errorMeta }
+        : error.response?.data || { error: 'Payment provider request failed' }
     };
   }
 }

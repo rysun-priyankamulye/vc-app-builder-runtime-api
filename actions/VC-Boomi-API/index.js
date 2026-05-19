@@ -6,13 +6,6 @@ const SECRET = process.env.SESSION_SECRET || 'replace-this-secret';
 
 function resolveBoomiConfig(path, params) {
   if (typeof path === 'string') {
-    if (path.startsWith('/v1/track-notify')) {
-      return {
-        apiUrl: params.BOOMI_API_URL_DEV,
-        apiKey: params.BOOMI_API_KEY_DEV
-      };
-    }
-
     if (path.startsWith('/v1/')) {
       return {
         apiUrl: params.BOOMI_API_URL,
