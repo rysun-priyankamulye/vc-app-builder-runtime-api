@@ -59,6 +59,51 @@ function buildRequestUrl(baseUrl, path) {
   return `${normalizedBase}${normalizedPath}`;
 }
 
+function normalizeAndValidateTargetUrl(rawUrl) {
+  let parsed;
+  try {
+    parsed = new URL(String(rawUrl));
+  } catch {
+    return { ok: false, error: 'Invalid path URL' };
+  }
+
+  if (parsed.protocol !== 'https:') {
+    return { ok: false, error: 'Only https URLs are allowed' };
+  }
+
+  // Basic SSRF guard: only allow VisualComfort domains.
+  // Expand this allowlist if you need other hosts (e.g., internal VPN hostnames).
+  const host = parsed.hostname.toLowerCase();
+  if (!(host === 'visualcomfort.com' || host.endsWith('.visualcomfort.com'))) {
+    return { ok: false, error: 'Target host not allowed' };
+  }
+
+  if (parsed.username || parsed.password) {
+    return { ok: false, error: 'Credentials in URL are not allowed' };
+  }
+
+  return { ok: true, url: parsed.toString() };
+}
+
+function resolveTargetUrl(params, path) {
+  const isAbsolute = /^https?:\/\//i.test(String(path || ''));
+
+  if (isAbsolute) {
+    return normalizeAndValidateTargetUrl(path);
+  }
+
+  const baseUrl = params.MAGENTO_API_URL;
+  if (!baseUrl) {
+    return {
+      ok: false,
+      error:
+        'Missing MAGENTO_API_URL (or provide an absolute https URL in path)'
+    };
+  }
+
+  return normalizeAndValidateTargetUrl(buildRequestUrl(baseUrl, path));
+}
+
 async function main(params) {
   if (params.__ow_method === 'options') {
     return {
@@ -99,15 +144,6 @@ async function main(params) {
     };
   }
 
-  const baseUrl = params.MAGENTO_API_URL;
-
-  if (!baseUrl) {
-    return {
-      statusCode: 500,
-      body: { error: 'Missing Magento API URL' }
-    };
-  }
-
   if (!data.customerEmail) {
     return {
       statusCode: 400,
@@ -115,10 +151,18 @@ async function main(params) {
     };
   }
 
+  const resolvedUrl = resolveTargetUrl(params, path);
+  if (!resolvedUrl.ok) {
+    return {
+      statusCode: 400,
+      body: { error: resolvedUrl.error }
+    };
+  }
+
   try {
     const response = await axios({
       method,
-      url: buildRequestUrl(baseUrl, path),
+      url: resolvedUrl.url,
       headers: {
         'Content-Type': 'application/json'
       },
