@@ -217,6 +217,8 @@ function getPayload(params) {
       query.billing_address_id
     ),
     isDefaultCard: body.isDefaultCard ?? body.is_default ?? body.isDefault ?? query.isDefaultCard ?? query.is_default ?? query.isDefault ?? null,
+    page: Number(body.page || query.page || 1),
+    limit: Number(body.limit || query.limit || 10),
     customerNumbers
   };
 }
@@ -749,7 +751,11 @@ async function listCards(config, requestFields, payload = null) {
     method: 'GET',
     url: buildUrl(config.baseUrl, config.listPath),
     headers: buildProviderHeaders(config, payload),
-    params: requestFields,
+    params: {
+      ...requestFields,
+      page: payload.page,
+      limit: payload.limit
+    },
     timeout: 30000
   });
 }
@@ -841,6 +847,31 @@ async function main(params) {
 
     if (payload.operation === 'list') {
       response = await listCards(providerConfig, customerNumbers, payload);
+
+      const cards = Array.isArray(response.data?.data)
+        ? response.data.data
+        : [];
+
+      const page = Math.max(Number(payload.page || 1), 1);
+      const limit = Math.max(Number(payload.limit || 10), 1);
+
+      const start = (page - 1) * limit;
+      const end = start + limit;
+
+      const paginatedCards = cards.slice(start, end);
+
+      response.data = {
+        ...response.data,
+        data: paginatedCards,
+        pagination: {
+          page,
+          limit,
+          total: cards.length,
+          totalPages: Math.max(Math.ceil(cards.length / limit), 1),
+          hasNextPage: end < cards.length,
+          hasPreviousPage: page > 1
+        }
+      };
     } else if (payload.operation === 'delete') {
       if (!payload.cardToken) {
         return {
