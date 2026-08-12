@@ -6,6 +6,11 @@ const HEADER_API = 'VCSalesQuotationHeaders';
 const LINE_ITEM_API = 'VCSalesQuotationLines';
 const REGION_CODE = 'WEB';
 const DELETE_API = '/api/services/VCSOPOServiceGroup/VCPOService/cancelSalesQuotation';
+const CONNECTION_ENV_PREFIXES = {
+  sat: 'D365_SAT',
+  'sat3-us': 'D365_SAT3_US',
+  'sat3-uk-eu': 'D365_SAT3_UK_EU'
+};
 
 function validateSessionToken(params) {
   const raw = params.__ow_headers?.['x-session-token'];
@@ -55,14 +60,65 @@ function parseBody(params) {
   }
 }
 
-async function getD365AccessToken(params) {
+function readD365Config(params, prefix) {
+  return {
+    D365_APP_ID: params[`${prefix}_APP_ID`],
+    D365_API_URL: params[`${prefix}_API_URL`],
+    D365_CLIENT_ID: params[`${prefix}_CLIENT_ID`],
+    D365_GRANT_TYPE: params[`${prefix}_GRANT_TYPE`],
+    D365_CLIENT_SECRET: params[`${prefix}_CLIENT_SECRET`]
+  };
+}
+
+function readLegacyD365Config(params) {
+  return {
+    D365_APP_ID: params.D365_APP_ID,
+    D365_API_URL: params.D365_API_URL,
+    D365_CLIENT_ID: params.D365_CLIENT_ID,
+    D365_GRANT_TYPE: params.D365_GRANT_TYPE,
+    D365_CLIENT_SECRET: params.D365_CLIENT_SECRET
+  };
+}
+
+function resolveD365Config(params, body) {
+  const rawConnectionId =
+    body.connectionId ||
+    params.connectionId ||
+    params.connectionid;
+
+  if (!rawConnectionId) {
+    throw Object.assign(new Error('Missing connectionId'), {
+      statusCode: 400
+    });
+  }
+
+  const connectionId = String(rawConnectionId).trim().toLowerCase();
+
+  // Production uses the existing D365_* variables
+  if (connectionId === 'production') {
+    return readLegacyD365Config(params);
+  }
+
+  const prefix = CONNECTION_ENV_PREFIXES[connectionId];
+
+  if (!prefix) {
+    throw Object.assign(
+      new Error(`Unsupported connectionId: ${rawConnectionId}`),
+      { statusCode: 400 }
+    );
+  }
+
+  return readD365Config(params, prefix);
+}
+
+async function getD365AccessToken(config) {
   const {
     D365_APP_ID,
     D365_API_URL,
     D365_CLIENT_ID,
     D365_GRANT_TYPE,
     D365_CLIENT_SECRET
-  } = params;
+  } = config;
 
   if (!D365_APP_ID || !D365_API_URL || !D365_CLIENT_ID || !D365_GRANT_TYPE || !D365_CLIENT_SECRET) {
     throw Object.assign(new Error('Missing D365 configuration'), { statusCode: 500 });
@@ -76,7 +132,7 @@ async function getD365AccessToken(params) {
 
   const authResponse = await axios({
     method: 'POST',
-    url: `https://login.microsoftonline.com/${D365_APP_ID}/oauth2/token`,
+    url: `https://login.windows.net/${D365_APP_ID}/oauth2/token`,
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded'
     },
@@ -93,6 +149,7 @@ function buildQuoteHeadersPath(data) {
     searchQuery = '',
     hasSearch = false,
     cancelled = false,
+    confirmed = false,
     skip = 0,
     top = 10,
     orderby = 'ModifiedAt desc',
@@ -106,14 +163,14 @@ function buildQuoteHeadersPath(data) {
   let filter;
   if (searchQuery) {
     if (hasSearch) {
-      filter = `RequestingCustomerAccountNumber eq '${d365CustID}' and (VCProjectName eq '*${searchQuery}*' or SalesQuotationNumber eq '*${searchQuery}*') and SalesQuotationStatus ne Microsoft.Dynamics.DataEntities.SalesQuotationStatus'Cancelled'`;
-    } else if (cancelled) {
+      filter = `RequestingCustomerAccountNumber eq '${d365CustID}' and (VCProjectName eq '*${searchQuery}*' or SalesQuotationNumber eq '*${searchQuery}*') and SalesQuotationStatus ne Microsoft.Dynamics.DataEntities.SalesQuotationStatus'Cancelled' and SalesQuotationStatus ne Microsoft.Dynamics.DataEntities.SalesQuotationStatus'Confirmed'`;
+    } else if (cancelled && confirmed) {
       filter = `RequestingCustomerAccountNumber eq '${d365CustID}' and SalesQuotationNumber eq '${searchQuery}'`;
     } else {
-      filter = `RequestingCustomerAccountNumber eq '${d365CustID}' and SalesQuotationNumber eq '${searchQuery}' and SalesQuotationStatus ne Microsoft.Dynamics.DataEntities.SalesQuotationStatus'Cancelled'`;
+      filter = `RequestingCustomerAccountNumber eq '${d365CustID}' and SalesQuotationNumber eq '${searchQuery}' and SalesQuotationStatus ne Microsoft.Dynamics.DataEntities.SalesQuotationStatus'Cancelled' and SalesQuotationStatus ne Microsoft.Dynamics.DataEntities.SalesQuotationStatus'Confirmed'`;
     }
   } else {
-    filter = `RequestingCustomerAccountNumber eq '${d365CustID}' and SalesQuotationStatus ne Microsoft.Dynamics.DataEntities.SalesQuotationStatus'Cancelled'`;
+    filter = `RequestingCustomerAccountNumber eq '${d365CustID}' and SalesQuotationStatus ne Microsoft.Dynamics.DataEntities.SalesQuotationStatus'Cancelled' and SalesQuotationStatus ne Microsoft.Dynamics.DataEntities.SalesQuotationStatus'Confirmed'`;
   }
 
   const query = new URLSearchParams();
@@ -329,10 +386,11 @@ async function main(params) {
   }
 
   try {
-    const accessToken = await getD365AccessToken(params);
+    const d365Config = resolveD365Config(params, body);
+    const accessToken = await getD365AccessToken(d365Config);
     const response = await axios({
       method: requestConfig.method,
-      url: buildRequestUrl(params.D365_API_URL, requestConfig.path),
+      url: buildRequestUrl(d365Config.D365_API_URL, requestConfig.path),
       headers: {
         'Content-Type': 'application/json',
         Authorization: accessToken,
@@ -349,7 +407,7 @@ async function main(params) {
   } catch (error) {
     return {
       statusCode: error.response?.status || error.statusCode || 500,
-      body: error.response?.data || { error: 'D365 request failed' }
+      body: error.response?.data || { error: error.statusCode ? error.message : 'D365 request failed' }
     };
   }
 }

@@ -11,7 +11,7 @@ dist
 # Config
 config.json
 .env*
-.aio
+.aio*
 
 # Adobe I/O console config
 console.json
@@ -39,4 +39,3 @@ coverage
 
 # logs folder for aio-run-detached
 logs
-

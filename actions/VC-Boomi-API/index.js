@@ -4,19 +4,24 @@ const crypto = require('crypto');
 
 const SECRET = process.env.SESSION_SECRET || 'replace-this-secret';
 
+const ALLOWED_V1_PREFIXES = [
+  '/v1/d365-integration-apis',
+  '/v1/track-notify'
+];
+
 function resolveBoomiConfig(path, params) {
   if (typeof path === 'string') {
-    if (path.startsWith('/v1/track-notify')) {
+    if (path.startsWith('/v1/d365-integration-apis')) {
       return {
-        apiUrl: params.BOOMI_API_URL_DEV,
-        apiKey: params.BOOMI_API_KEY_DEV
+        apiUrl: params.BOOMI_API_URL,
+        apiKey: params.V1_D365_BOOMI_API_KEY
       };
     }
 
-    if (path.startsWith('/v1/')) {
+    if (path.startsWith('/v1/track-notify')) {
       return {
         apiUrl: params.BOOMI_API_URL,
-        apiKey: params.V1_BOOMI_API_KEY
+        apiKey: params.V1_TRACK_NOTIFY_BOOMI_API_KEY
       };
     }
 
@@ -30,13 +35,26 @@ function resolveBoomiConfig(path, params) {
 
   return {
     apiUrl: params.BOOMI_API_URL,
-    apiKey: params.BOOMI_API_KEY
+    apiKey: params.V2_BOOMI_API_KEY
   };
+}
+
+function isAllowedPath(path) {
+  if (typeof path !== 'string' || path.length === 0) return false;
+  if (!path.startsWith('/')) return false;
+
+  // Restrict v1 requests to a known-safe allowlist.
+  if (path.startsWith('/v1/')) {
+    return ALLOWED_V1_PREFIXES.some((prefix) => path.startsWith(prefix));
+  }
+
+  // Keep existing behavior for other versions/paths.
+  return true;
 }
 
 function validateSessionToken(params) {
   const raw = params.__ow_headers?.['x-session-token'];
-  console.log('Headers received:', params.__ow_headers);
+  
   if (!raw) return false;
 
   try {
@@ -68,8 +86,6 @@ async function main(params) {
       }
     };
   }
-
-  console.log('Received params:', params);
 
   if (!validateSessionToken(params)) {
     return {
@@ -106,6 +122,16 @@ async function main(params) {
 
   if (!path) {
     return { statusCode: 400, body: { error: 'Missing path' } };
+  }
+
+  if (!isAllowedPath(path)) {
+    return {
+      statusCode: 400,
+      body: {
+        error: 'Path not allowed',
+        allowedV1Prefixes: ALLOWED_V1_PREFIXES
+      }
+    };
   }
 
   const boomiConfig = resolveBoomiConfig(path, params);
