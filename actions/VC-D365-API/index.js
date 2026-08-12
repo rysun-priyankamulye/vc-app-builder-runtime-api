@@ -149,6 +149,7 @@ function buildQuoteHeadersPath(data) {
     searchQuery = '',
     hasSearch = false,
     cancelled = false,
+    confirmed = false,
     skip = 0,
     top = 10,
     orderby = 'ModifiedAt desc',
@@ -162,14 +163,14 @@ function buildQuoteHeadersPath(data) {
   let filter;
   if (searchQuery) {
     if (hasSearch) {
-      filter = `RequestingCustomerAccountNumber eq '${d365CustID}' and (VCProjectName eq '*${searchQuery}*' or SalesQuotationNumber eq '*${searchQuery}*') and SalesQuotationStatus ne Microsoft.Dynamics.DataEntities.SalesQuotationStatus'Cancelled'`;
-    } else if (cancelled) {
+      filter = `RequestingCustomerAccountNumber eq '${d365CustID}' and (VCProjectName eq '*${searchQuery}*' or SalesQuotationNumber eq '*${searchQuery}*') and SalesQuotationStatus ne Microsoft.Dynamics.DataEntities.SalesQuotationStatus'Cancelled' and SalesQuotationStatus ne Microsoft.Dynamics.DataEntities.SalesQuotationStatus'Confirmed'`;
+    } else if (cancelled && confirmed) {
       filter = `RequestingCustomerAccountNumber eq '${d365CustID}' and SalesQuotationNumber eq '${searchQuery}'`;
     } else {
-      filter = `RequestingCustomerAccountNumber eq '${d365CustID}' and SalesQuotationNumber eq '${searchQuery}' and SalesQuotationStatus ne Microsoft.Dynamics.DataEntities.SalesQuotationStatus'Cancelled'`;
+      filter = `RequestingCustomerAccountNumber eq '${d365CustID}' and SalesQuotationNumber eq '${searchQuery}' and SalesQuotationStatus ne Microsoft.Dynamics.DataEntities.SalesQuotationStatus'Cancelled' and SalesQuotationStatus ne Microsoft.Dynamics.DataEntities.SalesQuotationStatus'Confirmed'`;
     }
   } else {
-    filter = `RequestingCustomerAccountNumber eq '${d365CustID}' and SalesQuotationStatus ne Microsoft.Dynamics.DataEntities.SalesQuotationStatus'Cancelled'`;
+    filter = `RequestingCustomerAccountNumber eq '${d365CustID}' and SalesQuotationStatus ne Microsoft.Dynamics.DataEntities.SalesQuotationStatus'Cancelled' and SalesQuotationStatus ne Microsoft.Dynamics.DataEntities.SalesQuotationStatus'Confirmed'`;
   }
 
   const query = new URLSearchParams();

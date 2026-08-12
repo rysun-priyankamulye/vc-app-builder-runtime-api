@@ -54,7 +54,7 @@ function isAllowedPath(path) {
 
 function validateSessionToken(params) {
   const raw = params.__ow_headers?.['x-session-token'];
-  console.log('Headers received:', params.__ow_headers);
+  
   if (!raw) return false;
 
   try {
@@ -86,8 +86,6 @@ async function main(params) {
       }
     };
   }
-
-  console.log('Received params:', params);
 
   if (!validateSessionToken(params)) {
     return {
