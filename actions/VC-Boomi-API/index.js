@@ -31,6 +31,13 @@ function resolveBoomiConfig(path, params) {
         apiKey: params.V2_BOOMI_API_KEY
       };
     }
+
+    if (path.startsWith('/v3/')) {
+      return {
+        apiUrl: params.BOOMI_API_URL_DEV,
+        apiKey: params.V3_BOOMI_API_KEY
+      };
+    }
   }
 
   return {

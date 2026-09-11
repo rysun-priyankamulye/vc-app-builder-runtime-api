@@ -89,10 +89,12 @@ application:
             inputs:
               LOG_LEVEL: $LOG_LEVEL
               BOOMI_API_URL: $BOOMI_API_URL
+              BOOMI_API_URL_DEV: $BOOMI_API_URL_DEV
               V1_BOOMI_API_KEY: $V1_BOOMI_API_KEY
               V1_D365_BOOMI_API_KEY: $V1_D365_BOOMI_API_KEY
               V1_TRACK_NOTIFY_BOOMI_API_KEY: $V1_TRACK_NOTIFY_BOOMI_API_KEY
               V2_BOOMI_API_KEY: $V2_BOOMI_API_KEY
+              V3_BOOMI_API_KEY: $V3_BOOMI_API_KEY
               BOOMI_API_KEY: $BOOMI_API_KEY
               SESSION_SECRET: $SESSION_SECRET
             annotations:
