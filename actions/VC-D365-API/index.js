@@ -275,7 +275,8 @@ function buildUpdateQuoteLineItemRequest(data) {
 
   let updateData = {};
   const hasQty = data.RequestedSalesQuantity !== undefined && !isNaN(parseInt(data.RequestedSalesQuantity, 10));
-  const hasSidemark = data.VCSidemark !== undefined && data.VCSidemark !== '';
+  const hasSidemark = data.VCSidemark !== undefined;
+  const hasDeliveryModeCode = data.DeliveryModeCode !== undefined && data.DeliveryModeCode !== '';
 
   if (hasQty) {
     updateData.RequestedSalesQuantity = parseInt(data.RequestedSalesQuantity, 10);
@@ -283,9 +284,12 @@ function buildUpdateQuoteLineItemRequest(data) {
   if (hasSidemark) {
     updateData.VCSidemark = data.VCSidemark;
   }
+  if (hasDeliveryModeCode) {
+    updateData.DeliveryModeCode = data.DeliveryModeCode;
+  }
 
   if (Object.keys(updateData).length === 0) {
-    throw Object.assign(new Error('No valid fields to update (only RequestedSalesQuantity or VCSidemark allowed)'), { statusCode: 400 });
+    throw Object.assign(new Error('No valid fields to update (only RequestedSalesQuantity, VCSidemark, or DeliveryModeCode allowed)'), { statusCode: 400 });
   }
 
   return {
